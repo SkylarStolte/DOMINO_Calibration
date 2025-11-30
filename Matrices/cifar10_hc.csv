@@ -1,0 +1,11 @@
+﻿,true_airplane,true_automobile,true_bird,true_cat,true_deer,true_dog,true_frog,true_horse,true_ship,true_truck
+airplane,0,0.5,1,1,1,1,1,1,0.5,0.5
+automobile,0.5,0,1,1,1,1,1,1,0.5,0.5
+bird,1,1,0,1,1,1,1,1,1,1
+cat,1,1,1,0,0.5,0.5,1,0.5,1,1
+deer,1,1,1,0.5,0,0.5,1,0.5,1,1
+dog,1,1,1,0.5,0.5,0,1,0.5,1,1
+frog,1,1,1,1,1,1,0,1,1,1
+horse,1,1,1,0.5,0.5,0.5,1,0,1,1
+ship,0.5,0.5,1,1,1,1,1,1,0,0.5
+truck,0.5,0.5,1,1,1,1,1,1,0.5,0
