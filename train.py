@@ -76,6 +76,10 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from matplotlib.backends.backend_pdf import PdfPages
 
+dataset_name = args.dataset_name.lower()
+if dataset_name == "altpets":
+    from dataloader_altpet import get_AltPet_loader
+    
 ##########################################################################################################################################################################
 
 #IMAGENET_NORMALIZATION_STATS = ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
@@ -93,6 +97,7 @@ data_dir = args.data_dir
 data_transform = transforms.Compose([
     #squarecrop,
     transforms.CenterCrop(128),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Assuming images are in range [0, 1]
 ])
@@ -140,7 +145,7 @@ class CustomImageDataset(torch.utils.data.Dataset):
 # Define batch size
 batch_size = args.batch_size
 
-dataset_name = args.dataset_name.lower()
+#dataset_name = args.dataset_name.lower()
 
 if dataset_name == "sneakers":
     print("sneakers")
@@ -171,28 +176,52 @@ elif dataset_name == "mnist":
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ]))
     class_names = [str(i) for i in range(10)]
+    
+elif dataset_name == "altpets":
+    print("Alternative Dataset of Pet Data")
 
+    # set up working data location
+    #data_root = '/blue/ruogu.fang/skylastolte4444/Airplanes/SAR_for_Uncertainty-main/SAR_for_Uncertainty-main/AltPets'
+
+    train_loader = get_AltPet_loader(data_dir + "/abs_train_filenames.txt", batch_size, augment=True, shuffle=True, num_workers=1, pin_memory=True)
+    valid_loader = get_AltPet_loader(data_dir + "/abs_valid_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=1, pin_memory=True)
+    matrix_loader = get_AltPet_loader(data_dir + "/abs_matrix_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=1, pin_memory=True)
+    test_loader = get_AltPet_loader(data_dir + "/abs_test_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=1, pin_memory=True)
+
+    #classes
+    with open(os.path.join(data_dir, 'folder_names.txt'), 'r') as f:
+        class_names = f.read().splitlines()
+
+    object_dict = {}
+    for o in range(len(class_names)):
+        object_dict[class_names[o]] = o
+        
 else:
     raise ValueError(f"Unknown dataset: {args.dataset_name}. Supported: sneakers, cifar10, mnist")
 
+if dataset_name != "altpets":
+    
+    # Define dataset split lengths
+    total_size = len(train_dataset)
+    train_size = int(0.8 * total_size)
+    val_size = test_size = (total_size - train_size) // 2
+    remainder = total_size - (train_size + val_size + test_size)
+    train_size += remainder  
 
-# Define dataset split lengths
-total_size = len(train_dataset)
-train_size = int(0.8 * total_size)
-val_size = test_size = (total_size - train_size) // 2
-remainder = total_size - (train_size + val_size + test_size)
-train_size += remainder  # If not divisible by 10, add remainder to training
+    # Perform the split
+    train_set, val_set, test_set = random_split(
+        train_dataset, [train_size, val_size, test_size],
+        generator=torch.Generator().manual_seed(42)  
+    )
 
-# Perform the split
-train_set, val_set, test_set = random_split(
-    train_dataset, [train_size, val_size, test_size],
-    generator=torch.Generator().manual_seed(42)  # For reproducibility
-)
+if dataset_name == "sneakers":
+    test_filenames = [train_dataset.images[i][0] for i in test_set.indices]
 
-# Create data loaders
-train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+if dataset_name != "altpets":    
+    # Create data loaders
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
 # Class info
 #class_names = sorted(os.listdir(args.data_dir))
@@ -202,7 +231,8 @@ IMG_CH = args.IMG_CH
 IMG_SIZE = args.IMG_SIZE
 
 print(f"Classes: {N_CLASSES}")
-print(f"Train size: {len(train_set)}, Val size: {len(val_set)}, Test size: {len(test_set)}")
+if dataset_name != "altpets":
+    print(f"Train size: {len(train_set)}, Val size: {len(val_set)}, Test size: {len(test_set)}")
 
 print(len(class_names))
 print(class_names)
@@ -270,6 +300,35 @@ elif model_version == "resnet101":
     model = models.resnet101(weights=models.ResNet101_Weights.DEFAULT)
     model.fc = nn.Linear(2048, len(class_names))
     print('Using RESNET 101')
+elif model_version == "densenet121":
+    #model = torch.hub.load('pytorch/vision:v0.10.0', 'densenet121', pretrained=True)
+    model = models.densenet121(weights=models.DenseNet121_Weights.DEFAULT)
+    
+    # DenseNet puts the final layer in `classifier`
+    num_features = model.classifier.in_features
+    model.classifier = nn.Linear(num_features, len(class_names))
+    print('Using DesNet 121')
+elif model_version == "DINO":
+    backbone = torch.hub.load('facebookresearch/dino:main','dino_vits16')
+
+    backbone.head = nn.Identity()
+
+    class DinoClassifier(nn.Module):
+        def __init__(self, backbone, num_classes):
+            super().__init__()
+            self.backbone = backbone
+            self.fc = nn.Linear(384, num_classes)  # ViT-S = 384
+
+        def forward(self, x):
+            feats = self.backbone(x)
+            return self.fc(feats)
+
+    model = DinoClassifier(backbone, len(class_names))
+    
+    for p in model.backbone.parameters():
+        p.requires_grad = False
+    
+    print("Using DINO ViT-S/16")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -374,6 +433,8 @@ val_list = []
 ece_list = []
 #val_loss_total = []
 
+train_list = []
+
 for epoch in range(num_epochs):
     running_loss = 0.
     correct = 0.
@@ -447,6 +508,9 @@ for epoch in range(num_epochs):
     val_acc = val_correct/val_seen
     val_list.append(val_acc)
     
+    train_acc = correct/seen
+    train_list.append(train_acc)
+    
     #val_loss_total.append(val_loss_section)
     
     if val_acc>val_acc_best:
@@ -460,33 +524,38 @@ for epoch in range(num_epochs):
     
 ece_list_cpu = [t.cpu() for t in ece_list]
 val_list_cpu = [t.cpu() for t in val_list]
+train_list_cpu = [t.cpu() for t in train_list]
 #val_loss_total_cpu = [t.cpu() for t in val_loss_total]
 
 epochs = list(range(0, num_epochs))
 
 # Create a dictionary for DataFrame creation
-data = {'Epochs': epochs, 'ECE': [t.item() for t in ece_list_cpu], 'ValAcc': [t.item() for t in val_list_cpu]}
+data = {'Epochs': epochs, 'ECE': [t.item() for t in ece_list_cpu], 'ValAcc': [t.item() for t in val_list_cpu], 'TrainAcc': [t.item() for t in train_list_cpu]}
 df = pd.DataFrame(data)
 
 # Save the DataFrame to a CSV file
-df.to_csv(results_model + '/calibration_vs_accuracy.csv', index=False)
+df.to_csv(os.path.join(results_model,'calibration_vs_accuracy.csv'), index=False)
 
 # Plot the lists
 plt.plot(epochs, ece_list_cpu, marker='o', linestyle='-', label='Calibration')
 plt.plot(epochs, val_list_cpu, marker='o', linestyle='-', label='Validation Accuracy')
+plt.plot(epochs, train_list_cpu, marker='o', linestyle='-', label='Train Accuracy')
 #plt.plot(epochs, val_loss_total_cpu, label='Validation Loss')
 
 # Add labels and a title for clarity
 #plt.xlabel("Calibration")
 #plt.ylabel("Accuracy")
 plt.title("Calibration and Accuracy across Epochs")
-plt.xlim(0, 100)
+plt.xlim(0, num_epochs)
 plt.legend()
 plt.xlabel("Epochs")
 
+plt.yticks(np.arange(0.0, 1.01, 0.05))  # ticks every 0.05
+plt.ylim(0, 1)
+
 # Display the plot
 #plt.show()
-plt.savefig(results_model + '/calibration_vs_accuracy.pdf')
+plt.savefig(os.path.join(results_model,'calibration_vs_accuracy.pdf'))
 
 ##########################################################################################################################################################################  
 
@@ -580,7 +649,14 @@ df.to_csv(results_model + '/classificationreport.csv')
 
 ##########################################################################################################################################################################  
 
-target_layers = [model.layer4[-1]]
+
+if model_version.startswith("resnet"):
+    target_layers = [model.layer4[-1]]
+elif model_version.startswith("densenet"):
+    target_layers = [model.features.denseblock4]
+elif model_version.startswith("DINO"):    
+    target_layers = [model.backbone.blocks[-1].norm1]
+#target_layers = [model.layer4[-1]]
 
 file_img = results_model + '/misclassified_images.pdf'
 
@@ -603,6 +679,9 @@ def save_misclassified_to_pdf(model, dataloader, class_names, target_layers,
         for batch_idx, (images, labels) in enumerate(dataloader):
             images = images.to(device)
             labels = labels.to(device)
+            
+            if c == 1:
+                images = images.repeat(1, 3, 1, 1).float()
 
             outputs = model(images)
             probs = F.softmax(outputs, dim=1)
@@ -613,8 +692,15 @@ def save_misclassified_to_pdf(model, dataloader, class_names, target_layers,
 
             if len(mis_indices) == 0:
                 continue  # No mistakes in this batch
-
+                
+            #if dataset_name == "sneakers":
+            #    #files_to_use = test_filenames[mis_indices]
+            #    files_to_use = [test_filenames[i] for i in mis_indices.tolist()]
+            #    print(files_to_use[0])
+            #    print(len(files_to_use))
+                
             for idx in mis_indices:
+                #print(idx)
                 total_misclassified += 1
                 img = images[idx]
                 true = labels[idx].item()
@@ -642,12 +728,29 @@ def save_misclassified_to_pdf(model, dataloader, class_names, target_layers,
                 
                 ax[0].imshow(rgb_img)
                 ax[0].axis('off')
-                ax[0].set_title(
-                    f"Missed Image\n"
-                    f"True: {class_names[true]} ({true_conf:.1f}%)\n"
-                    f"Pred: {class_names[pred]} ({pred_conf:.1f}%)",
-                    fontsize=8
-                )
+                
+                if dataset_name != "sneakers":
+                    ax[0].set_title(
+                        f"Missed Image\n"
+                        f"True: {class_names[true]} ({true_conf:.1f}%)\n"
+                        f"Pred: {class_names[pred]} ({pred_conf:.1f}%)",
+                        fontsize=8
+                    )
+                elif dataset_name == "sneakers":
+                    #print(test_filenames[idx])
+                    
+                    dirname = os.path.basename(os.path.dirname(test_filenames[idx]))
+                    filename = os.path.basename(test_filenames[idx])
+
+                    new_var = os.path.join(dirname, filename)
+                    
+                    ax[0].set_title(
+                        f"Missed Image\n"
+                        f"Name: {new_var}\n"
+                        f"True: {class_names[true]} ({true_conf:.1f}%)\n"
+                        f"Pred: {class_names[pred]} ({pred_conf:.1f}%)",
+                        fontsize=8
+                    )
 
                 ax[1].imshow(visualization)
                 ax[1].axis('off')
