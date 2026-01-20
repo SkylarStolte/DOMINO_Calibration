@@ -45,7 +45,7 @@ import torchvision
 from torchvision import datasets, models, transforms
 import torchvision.transforms as T
 import torch.nn.functional as F
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, TensorDataset
 
 #general
 import os
@@ -68,7 +68,8 @@ from DominoLossM import DOMINO_Loss_M
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 from sklearn.calibration import calibration_curve
 from torchmetrics.classification import MulticlassCalibrationError
-from sklearn.metrics import brier_score_loss
+from sklearn.metrics import brier_score_loss, top_k_accuracy_score
+from sklearn.model_selection import train_test_split
 from reliability_diagrams import *
 
 from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
@@ -152,20 +153,30 @@ if dataset_name == "sneakers":
     train_dataset = CustomImageDataset(data_dir, transform=data_transform)
     #class_names = dataset.classes
     
-    class_names = sorted([
-    d for d in os.listdir(args.data_dir)
-    if not d.startswith('.') and d != '.ipynb_checkpoints' and os.path.isdir(os.path.join(args.data_dir, d))
-])
+    class_names = sorted([d for d in os.listdir(args.data_dir)
+    if not d.startswith('.') and d != '.ipynb_checkpoints' and os.path.isdir(os.path.join(args.data_dir, d))])
+    
+if dataset_name == "cars":
+    print("Stanford Cars")
+    train_dataset = CustomImageDataset(data_dir, transform=data_transform)
+    #class_names = dataset.classes
+    
+    class_names = sorted([d for d in os.listdir(args.data_dir)
+    if not d.startswith('.') and d != '.ipynb_checkpoints' and os.path.isdir(os.path.join(args.data_dir, d))])
 
 elif dataset_name == "cifar10":
     print("CIFAR10")
     train_dataset = datasets.CIFAR10(root=data_dir, train=True, download=True, transform=data_transform)
     class_names = train_dataset.classes
     
+    test_dataset = datasets.CIFAR10(root=data_dir, train=False, download=True, transform=data_transform)
+    
 elif dataset_name == "cifar100":
     print("CIFAR100")
     train_dataset = datasets.CIFAR100(root=data_dir, train=True, download=True, transform=data_transform)
     class_names = train_dataset.classes
+    
+    test_dataset = datasets.CIFAR100(root=data_dir, train=False, download=True, transform=data_transform)
 
 elif dataset_name == "mnist":
     print("MNIST")
@@ -176,6 +187,64 @@ elif dataset_name == "mnist":
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ]))
     class_names = [str(i) for i in range(10)]
+    
+    test_dataset = datasets.MNIST(root=data_dir, train=False, download=True, transform=transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),  # Convert 1→3 channels
+        transforms.Resize(128),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    ]))
+    
+elif dataset_name == "mstar":
+    
+    print("MSTAR")
+    
+    def DataFromDirectories(data_dir):
+        data_transforms = {
+        'train': transforms.Compose([
+            transforms.CenterCrop(64),
+            transforms.Grayscale(),
+            transforms.ToTensor(),
+        ]),
+        'test': transforms.Compose([
+            transforms.CenterCrop(64),
+            transforms.Grayscale(),
+            transforms.ToTensor(),
+        ]),
+        'mat_val': transforms.Compose([
+            transforms.CenterCrop(64),
+            transforms.Grayscale(),
+            transforms.ToTensor(),
+        ]),
+        'mat_val_recon': transforms.Compose([
+            transforms.CenterCrop(64),
+            transforms.Grayscale(),
+            transforms.ToTensor(),
+        ]),    
+        }
+        image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
+                                            data_transforms[x])
+                        for x in ['train', 'test', 'mat_val', 'mat_val_recon']}
+        dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=100,
+                                                    shuffle=True, num_workers=4)
+                    for x in ['train', 'test', 'mat_val', 'mat_val_recon']}
+        dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'test', 'mat_val', 'mat_val_recon']}
+        class_names = image_datasets['train'].classes
+        print(class_names)
+
+        return dataloaders, dataset_sizes, class_names
+    
+    dataloaders, dataset_sizes, class_names = DataFromDirectories(data_dir)
+    
+    train_loader = dataloaders['train']
+    valid_loader = dataloaders['mat_val']
+    matrix_loader = dataloaders['mat_val_recon']
+    test_loader = dataloaders['test']
+    
+    train_size = dataset_sizes['train']
+    val_size = dataset_sizes['mat_val']
+    matrix_size = dataset_sizes['mat_val_recon']
+    test_size = dataset_sizes['test']
     
 elif dataset_name == "altpets":
     print("Alternative Dataset of Pet Data")
@@ -197,9 +266,9 @@ elif dataset_name == "altpets":
         object_dict[class_names[o]] = o
         
 else:
-    raise ValueError(f"Unknown dataset: {args.dataset_name}. Supported: sneakers, cifar10, mnist")
+    raise ValueError(f"Unknown dataset: {args.dataset_name}. Supported: sneakers, cifar10, mnist, altpets, mstar, cars")
 
-if dataset_name != "altpets":
+if dataset_name != "altpets" and dataset_name != "mstar": # and dataset_name != "cars":
     
     # Define dataset split lengths
     total_size = len(train_dataset)
@@ -213,11 +282,19 @@ if dataset_name != "altpets":
         train_dataset, [train_size, val_size, test_size],
         generator=torch.Generator().manual_seed(42)  
     )
+    #train_set, val_set = random_split(
+    #    train_dataset, [train_size, val_size],
+    #    generator=torch.Generator().manual_seed(42)  
+    #)
+    
+    if dataset_name != "sneakers" and dataset_name != "cars":
+        val_set = val_set + test_set
+        test_set = test_dataset
 
-if dataset_name == "sneakers":
+if dataset_name == "sneakers" or dataset_name == "cars":
     test_filenames = [train_dataset.images[i][0] for i in test_set.indices]
 
-if dataset_name != "altpets":    
+if dataset_name != "altpets" and dataset_name != "mstar": # and dataset_name != "cars":    
     # Create data loaders
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
@@ -231,7 +308,7 @@ IMG_CH = args.IMG_CH
 IMG_SIZE = args.IMG_SIZE
 
 print(f"Classes: {N_CLASSES}")
-if dataset_name != "altpets":
+if dataset_name != "altpets" and dataset_name != "mstar" and dataset_name != "cars":
     print(f"Train size: {len(train_set)}, Val size: {len(val_set)}, Test size: {len(test_set)}")
 
 print(len(class_names))
@@ -329,6 +406,68 @@ elif model_version == "DINO":
         p.requires_grad = False
     
     print("Using DINO ViT-S/16")
+elif model_version == "DINOv3":
+    
+    weights = "/blue/ruogu.fang/skylastolte4444/skylar/AFRL/SAR_for_Uncertainty-main/SAR_for_Uncertainty-main/scripts/dino_models/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
+    
+    DINOV3_GITHUB_LOCATION = "dinov3"
+
+    if os.getenv("DINOV3_LOCATION") is not None:
+        DINOV3_LOCATION = os.getenv("DINOV3_LOCATION")
+    else:
+        DINOV3_LOCATION = DINOV3_GITHUB_LOCATION
+    
+    print(f"DINOv3 location set to {DINOV3_LOCATION}")
+
+    # examples of available DINOv3 models:
+    MODEL_DINOV3_VITS = "dinov3_vits16"
+    MODEL_DINOV3_VITSP = "dinov3_vits16plus"
+    MODEL_DINOV3_VITB = "dinov3_vitb16"
+    MODEL_DINOV3_VITL = "dinov3_vitl16"
+    MODEL_DINOV3_VITHP = "dinov3_vith16plus"
+    MODEL_DINOV3_VIT7B = "dinov3_vit7b16"
+
+    MODEL_DINOV3_CONVS = "dinov3_convnext_small"
+    MODEL_DINOV3_CONVL = "dinov3_convnext_large"
+
+    MODEL_NAME = MODEL_DINOV3_VITB
+
+    MODEL_TO_NUM_LAYERS = {
+        MODEL_DINOV3_VITS: 12,
+        MODEL_DINOV3_VITSP: 12,
+        MODEL_DINOV3_VITB: 12,
+        MODEL_DINOV3_VITL: 24,
+        MODEL_DINOV3_VITHP: 32,
+        MODEL_DINOV3_VIT7B: 40,
+        MODEL_DINOV3_CONVS: 12,
+        MODEL_DINOV3_CONVL: 12
+    }
+
+    n_layers = MODEL_TO_NUM_LAYERS[MODEL_NAME]
+
+    model_backbone = torch.hub.load(
+        repo_or_dir=DINOV3_LOCATION,
+        model=MODEL_NAME,
+        source="local",
+        #weights="/home/kyle/Desktop/Misc/dino/weights/dinov3_convnext_large_pretrain_lvd1689m-61fa432d.pth"
+        #weights="/home/kyle/Desktop/Misc/dino/weights/dinov3_convnext_small_pretrain_lvd1689m-296db49d.pth"
+        #weights="/home/kyle/Desktop/Misc/dino/weights/dinov3_vits16_pretrain_lvd1689m-08c60483.pth"
+        weights=weights
+    )
+    
+    class DinoClassifier(nn.Module):
+        def __init__(self, backbone, num_classes):
+            super().__init__()
+            self.backbone = backbone
+            self.fc = nn.Linear(768, num_classes)  # ViT-S = 384
+
+        def forward(self, x):
+            feats = self.backbone(x)
+            return self.fc(feats)
+
+    model = DinoClassifier(model_backbone, len(class_names))
+    
+    print("Using DINO v3 ViT-S/16")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -451,6 +590,9 @@ for epoch in range(num_epochs):
         bs, c, h, w = inputs.shape
         if c == 1:
             inputs = inputs.repeat(1, 3, 1, 1).float()
+            
+        #if dataset_name == "cars":
+        #    labels = labels.long().view(-1)
 
         optimizer.zero_grad()
         outputs = model(inputs)
@@ -567,6 +709,8 @@ model.load_state_dict(torch.load(model_save_path + model_name + '.pth'))
 
 test_correct = 0.
 test_seen = 0.
+top2 = []
+top3 = []
 
 for i, data in enumerate(test_loader, 0):##dataloaders['val'], 0):
     
@@ -575,6 +719,9 @@ for i, data in enumerate(test_loader, 0):##dataloaders['val'], 0):
     inputs, labels = data
     inputs = inputs.to(device)
     labels = labels.to(device)
+    
+    #if dataset_name == "cars":
+    #    labels = labels.long().view(-1)
 
     bs, c, h, w = inputs.shape
     #print(inputs.shape)
@@ -585,6 +732,9 @@ for i, data in enumerate(test_loader, 0):##dataloaders['val'], 0):
     
     test_correct += (outputs.argmax(dim=1) == labels).float().sum()
     test_seen += len(labels)
+    
+    top2.append(top_k_accuracy_score(labels.cpu().detach().numpy(), outputs.cpu().detach().numpy(), k=2, normalize=True, sample_weight=None, labels=list(range(N_CLASSES))))
+    top3.append(top_k_accuracy_score(labels.cpu().detach().numpy(), outputs.cpu().detach().numpy(), k=3, normalize=True, sample_weight=None, labels=list(range(N_CLASSES))))
     
     #save targets, predictions, and outputs for analysis
     if i==0:
@@ -614,22 +764,55 @@ print(labels_total.shape)
 preds_total = preds_total.cpu().detach().numpy()
 #labels_total = labels_total.cpu().detach().numpy()
 
-print('The accuracy on the testing set is: %.4f' % (test_correct/test_seen))
-
+print('The Top 1 accuracy on the testing set is: %.4f' % (test_correct/test_seen))
+print('The Top 2 accuracy on the testing set is: %.4f' % (sum(top2)/len(top2)))
+print('The Top 3 accuracy on the testing set is: %.4f' % (sum(top3)/len(top3)))
 
 ##########################################################################################################################################################################  
 
 #confusion matrix on test data
 
+#def plot_confusion_matrix(labels, pred_labels, classes):
+
+#    fig = plt.figure(figsize=(10, 10))
+ #   ax = fig.add_subplot(1, 1, 1)
+ #   cm = confusion_matrix(labels, pred_labels)
+ #   cm = ConfusionMatrixDisplay(cm, display_labels=classes)
+ #   cm.plot(values_format='d', cmap='Blues', ax=ax)
+ #   plt.grid(False)
+#    plt.xticks(rotation=90)
+    
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import numpy as np
+import matplotlib.pyplot as plt
+
 def plot_confusion_matrix(labels, pred_labels, classes):
+    num_classes = len(classes)
+    label_indices = np.arange(num_classes)
 
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(1, 1, 1)
-    cm = confusion_matrix(labels, pred_labels)
-    cm = ConfusionMatrixDisplay(cm, display_labels=classes)
-    cm.plot(values_format='d', cmap='Blues', ax=ax)
-    plt.grid(False)
-    plt.xticks(rotation=90)
+
+    cm = confusion_matrix(
+        labels,
+        pred_labels,
+        labels=label_indices   # <<< THIS IS THE FIX
+    )
+
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=cm,
+        display_labels=classes
+    )
+
+    disp.plot(
+        include_values=False,  # IMPORTANT for 196 classes
+        cmap="Blues",
+        ax=ax,
+        xticks_rotation=90
+    )
+
+    ax.grid(False)
+
 
 plot_confusion_matrix(labels_total, preds_total, class_names)
 plt.tight_layout()
@@ -679,6 +862,9 @@ def save_misclassified_to_pdf(model, dataloader, class_names, target_layers,
         for batch_idx, (images, labels) in enumerate(dataloader):
             images = images.to(device)
             labels = labels.to(device)
+            
+            #if dataset_name == "cars":
+            #    labels = labels.long().view(-1)
             
             if c == 1:
                 images = images.repeat(1, 3, 1, 1).float()
@@ -736,7 +922,7 @@ def save_misclassified_to_pdf(model, dataloader, class_names, target_layers,
                         f"Pred: {class_names[pred]} ({pred_conf:.1f}%)",
                         fontsize=8
                     )
-                elif dataset_name == "sneakers":
+                elif dataset_name == "sneakers" or dataset_name == "cars":
                     #print(test_filenames[idx])
                     
                     dirname = os.path.basename(os.path.dirname(test_filenames[idx]))
