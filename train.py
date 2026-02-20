@@ -81,6 +81,8 @@ dataset_name = args.dataset_name.lower()
 if dataset_name == "altpets":
     from dataloader_altpet import get_AltPet_loader
     
+print('imported stuff', flush=True)
+    
 ##########################################################################################################################################################################
 
 #IMAGENET_NORMALIZATION_STATS = ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
@@ -97,10 +99,14 @@ data_dir = args.data_dir
 
 data_transform = transforms.Compose([
     #squarecrop,
-    transforms.CenterCrop(128),
+    #transforms.CenterCrop(128),
+    transforms.Resize((128,128)),
     transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(15),
+    transforms.ColorJitter(0.2, 0.2, 0.2, 0.1),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Assuming images are in range [0, 1]
+    #transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Assuming images are in range [0, 1]
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Assuming images are in range [0, 1]
 ])
 
 class CustomImageDataset(torch.utils.data.Dataset):
@@ -149,7 +155,7 @@ batch_size = args.batch_size
 #dataset_name = args.dataset_name.lower()
 
 if dataset_name == "sneakers":
-    print("sneakers")
+    print("sneakers", flush=True)
     train_dataset = CustomImageDataset(data_dir, transform=data_transform)
     #class_names = dataset.classes
     
@@ -157,7 +163,7 @@ if dataset_name == "sneakers":
     if not d.startswith('.') and d != '.ipynb_checkpoints' and os.path.isdir(os.path.join(args.data_dir, d))])
     
 if dataset_name == "cars":
-    print("Stanford Cars")
+    print("Stanford Cars", flush=True)
     train_dataset = CustomImageDataset(data_dir, transform=data_transform)
     #class_names = dataset.classes
     
@@ -165,21 +171,21 @@ if dataset_name == "cars":
     if not d.startswith('.') and d != '.ipynb_checkpoints' and os.path.isdir(os.path.join(args.data_dir, d))])
 
 elif dataset_name == "cifar10":
-    print("CIFAR10")
+    print("CIFAR10", flush=True)
     train_dataset = datasets.CIFAR10(root=data_dir, train=True, download=True, transform=data_transform)
     class_names = train_dataset.classes
     
     test_dataset = datasets.CIFAR10(root=data_dir, train=False, download=True, transform=data_transform)
     
 elif dataset_name == "cifar100":
-    print("CIFAR100")
+    print("CIFAR100", flush=True)
     train_dataset = datasets.CIFAR100(root=data_dir, train=True, download=True, transform=data_transform)
     class_names = train_dataset.classes
     
     test_dataset = datasets.CIFAR100(root=data_dir, train=False, download=True, transform=data_transform)
 
 elif dataset_name == "mnist":
-    print("MNIST")
+    print("MNIST", flush=True)
     train_dataset = datasets.MNIST(root=data_dir, train=True, download=True, transform=transforms.Compose([
         transforms.Grayscale(num_output_channels=3),  # Convert 1→3 channels
         transforms.Resize(128),
@@ -197,7 +203,7 @@ elif dataset_name == "mnist":
     
 elif dataset_name == "mstar":
     
-    print("MSTAR")
+    print("MSTAR", flush=True)
     
     def DataFromDirectories(data_dir):
         data_transforms = {
@@ -247,15 +253,15 @@ elif dataset_name == "mstar":
     test_size = dataset_sizes['test']
     
 elif dataset_name == "altpets":
-    print("Alternative Dataset of Pet Data")
+    print("Alternative Dataset of Pet Data", flush=True)
 
     # set up working data location
     #data_root = '/blue/ruogu.fang/skylastolte4444/Airplanes/SAR_for_Uncertainty-main/SAR_for_Uncertainty-main/AltPets'
 
-    train_loader = get_AltPet_loader(data_dir + "/abs_train_filenames.txt", batch_size, augment=True, shuffle=True, num_workers=1, pin_memory=True)
-    valid_loader = get_AltPet_loader(data_dir + "/abs_valid_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=1, pin_memory=True)
-    matrix_loader = get_AltPet_loader(data_dir + "/abs_matrix_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=1, pin_memory=True)
-    test_loader = get_AltPet_loader(data_dir + "/abs_test_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=1, pin_memory=True)
+    train_loader = get_AltPet_loader(data_dir + "/abs_train_filenames.txt", batch_size, augment=True, shuffle=True, num_workers=8, pin_memory=True)
+    valid_loader = get_AltPet_loader(data_dir + "/abs_valid_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=8, pin_memory=True)
+    matrix_loader = get_AltPet_loader(data_dir + "/abs_matrix_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=8, pin_memory=True)
+    test_loader = get_AltPet_loader(data_dir + "/abs_test_filenames.txt", batch_size, augment=False, shuffle=True, num_workers=8, pin_memory=True)
 
     #classes
     with open(os.path.join(data_dir, 'folder_names.txt'), 'r') as f:
@@ -296,9 +302,9 @@ if dataset_name == "sneakers" or dataset_name == "cars":
 
 if dataset_name != "altpets" and dataset_name != "mstar": # and dataset_name != "cars":    
     # Create data loaders
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=8)
+    valid_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=8)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=8)
 
 # Class info
 #class_names = sorted(os.listdir(args.data_dir))
@@ -307,12 +313,12 @@ N_CLASSES = len(class_names)
 IMG_CH = args.IMG_CH
 IMG_SIZE = args.IMG_SIZE
 
-print(f"Classes: {N_CLASSES}")
+print(f"Classes: {N_CLASSES}", flush=True)
 if dataset_name != "altpets" and dataset_name != "mstar" and dataset_name != "cars":
-    print(f"Train size: {len(train_set)}, Val size: {len(val_set)}, Test size: {len(test_set)}")
+    print(f"Train size: {len(train_set)}, Val size: {len(val_set)}, Test size: {len(test_set)}", flush=True)
 
-print(len(class_names))
-print(class_names)
+print(len(class_names), flush=True)
+print(class_names, flush=True)
 
 ##########################################################################################################################################################################
 
@@ -357,10 +363,10 @@ if DOMINO:
     a = 0.5
     b = 0.5
     
-    print('DOMINO is working')
+    print('DOMINO is working', flush=True)
     
 if DOMINOM:
-    print('DOMINO Multiply is working')
+    print('DOMINO Multiply is working', flush=True)
 
 # load a pre-trained model
 model_version = args.model_version
@@ -368,15 +374,45 @@ model_version = args.model_version
 if model_version == "resnet18":
     model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
     model.fc = nn.Linear(512, len(class_names))#len(object_categories))
-    print('Using RESNET 18')
+    print('Using RESNET 18', flush=True)
 elif model_version == "resnet50":
     model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
     model.fc = nn.Linear(2048, len(class_names))
-    print('Using RESNET 50')
+    print('Using RESNET 50', flush=True)
 elif model_version == "resnet101":
     model = models.resnet101(weights=models.ResNet101_Weights.DEFAULT)
     model.fc = nn.Linear(2048, len(class_names))
-    print('Using RESNET 101')
+    print('Using RESNET 101', flush=True)
+elif model_version == "resnext50":
+    model = models.resnext50_32x4d(weights=models.ResNeXt50_32X4D_Weights.IMAGENET1K_V2)
+    model.fc = nn.Linear(2048, len(class_names))
+    
+    #classifier = nn.Sequential(
+    #  nn.Linear(in_features=2048, out_features=1024),
+    #  nn.LeakyReLU(),
+    #  nn.Dropout(p=0.2),
+    #  nn.Linear(in_features=1024, out_features=512),
+    #  nn.LeakyReLU(),
+    #  nn.Dropout(p=0.3),
+    #  nn.Linear(in_features=512, out_features=len(class_names)),
+    #  nn.LogSoftmax(dim=1)  
+    #)
+    
+    #model.fc = classifier
+    
+    #for param in model.parameters():
+    #    param.requires_grad = False
+        
+    #for param in model.layer3.parameters():
+    #    param.requires_grad = True    
+
+    #for param in model.layer4.parameters():
+    #    param.requires_grad = True
+
+    #for param in model.fc.parameters():
+    #    param.requires_grad = True
+    
+    print('Using RESNExT 50', flush=True)    
 elif model_version == "densenet121":
     #model = torch.hub.load('pytorch/vision:v0.10.0', 'densenet121', pretrained=True)
     model = models.densenet121(weights=models.DenseNet121_Weights.DEFAULT)
@@ -384,8 +420,8 @@ elif model_version == "densenet121":
     # DenseNet puts the final layer in `classifier`
     num_features = model.classifier.in_features
     model.classifier = nn.Linear(num_features, len(class_names))
-    print('Using DesNet 121')
-elif model_version == "DINO":
+    print('Using DesNet 121', flush=True)
+elif model_version == "dino":
     backbone = torch.hub.load('facebookresearch/dino:main','dino_vits16')
 
     backbone.head = nn.Identity()
@@ -405,8 +441,8 @@ elif model_version == "DINO":
     for p in model.backbone.parameters():
         p.requires_grad = False
     
-    print("Using DINO ViT-S/16")
-elif model_version == "DINOv3":
+    print("Using DINO ViT-S/16", flush=True)
+elif model_version == "dinov3":
     
     weights = "/blue/ruogu.fang/skylastolte4444/skylar/AFRL/SAR_for_Uncertainty-main/SAR_for_Uncertainty-main/scripts/dino_models/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
     
@@ -467,7 +503,10 @@ elif model_version == "DINOv3":
 
     model = DinoClassifier(model_backbone, len(class_names))
     
-    print("Using DINO v3 ViT-S/16")
+    for p in model.backbone.parameters():
+        p.requires_grad = False
+    
+    print("Using DINO v3 ViT-S/16", flush=True)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -483,10 +522,13 @@ else:
 
  # construct an optimizer
 params = [p for p in model.parameters() if p.requires_grad]
-optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
+#optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
+#optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad,model.parameters()), lr=5e-4)
+
+optimizer = torch.optim.AdamW(params, lr=1e-4, weight_decay=1e-2) 
 
 # and a learning rate scheduler
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+#lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
 # epoch
 num_epochs = args.epochs
@@ -500,8 +542,9 @@ metric1 = MulticlassCalibrationError(num_classes=len(class_names), n_bins=10, no
 
 if args.pick_a_and_b:
 
-    model2 = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-    model2.fc = nn.Linear(2048, len(class_names))
+    #model2 = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    #model2.fc = nn.Linear(2048, len(class_names))
+    model12 = model
     model2.to(device)
 
     def train_with_ab(a, b, num_epochs=20):
@@ -574,6 +617,8 @@ ece_list = []
 
 train_list = []
 
+print('about to train', flush=True)
+
 for epoch in range(num_epochs):
     running_loss = 0.
     correct = 0.
@@ -611,10 +656,15 @@ for epoch in range(num_epochs):
         running_loss += loss.item()
         correct += (outputs.argmax(dim=1) == labels).float().sum()
         seen += len(labels)
-        
-    ece_running = 0.
-    counter  = 0.
+    
+    #lr_scheduler.step()
+    
+    #ece_running = 0.
+    #counter  = 0.
     #val_loss_section = 0.
+    
+    all_outputs = []
+    all_labels = []
     
     for i, data in enumerate(valid_loader, 0):##dataloaders['val'], 0):
         inputs, labels = data
@@ -626,12 +676,15 @@ for epoch in range(num_epochs):
             inputs = inputs.repeat(1, 3, 1, 1).float()
 
         outputs = model(inputs)
+        
+        all_outputs.append(outputs)
+        all_labels.append(labels)
     
         val_correct += (outputs.argmax(dim=1) == labels).float().sum()
         val_seen += len(labels)
         
-        ece_running += metric1(outputs, labels)
-        counter += 1
+        #ece_running += metric1(outputs, labels)
+        ##counter += 1
         
         #if DOMINO:
         #    val_loss = criterion(outputs, labels, matrix_penalty, a, b)
@@ -643,8 +696,11 @@ for epoch in range(num_epochs):
             
         #val_loss_section+=val_loss
     
-    ece_running = ece_running/counter
-    ece_list.append(ece_running)
+    #ece_running = ece_running/counter
+    all_outputs = torch.cat(all_outputs, dim=0)
+    all_labels = torch.cat(all_labels, dim=0)
+
+    ece_list.append(metric1(all_outputs, all_labels))
     
     #changed to only save models when validation improves
     val_acc = val_correct/val_seen
@@ -658,9 +714,9 @@ for epoch in range(num_epochs):
     if val_acc>val_acc_best:
         torch.save(model.state_dict(), model_save_path + model_name + '.pth')
         val_acc_best=val_acc
-        print('The new best validation accuracy is %.4f, saving model' % (val_acc_best))
+        print('The new best validation accuracy is %.4f, saving model' % (val_acc_best), flush=True)
 
-    print("Epoch %d, loss: %.3f, Train acc: %.4f, Val acc: %.4f" % (epoch + 1,  running_loss/seen, correct/seen, val_correct/val_seen))
+    print("Epoch %d, loss: %.3f, Train acc: %.4f, Val acc: %.4f" % (epoch + 1,  running_loss/seen, correct/seen, val_correct/val_seen), flush=True)
 
 ##########################################################################################################################################################################    
     
@@ -835,9 +891,11 @@ df.to_csv(results_model + '/classificationreport.csv')
 
 if model_version.startswith("resnet"):
     target_layers = [model.layer4[-1]]
+elif model_version.startswith("resnext"):
+    target_layers = [model.layer4[-1]]
 elif model_version.startswith("densenet"):
     target_layers = [model.features.denseblock4]
-elif model_version.startswith("DINO"):    
+elif model_version.startswith("dino"):    
     target_layers = [model.backbone.blocks[-1].norm1]
 #target_layers = [model.layer4[-1]]
 
